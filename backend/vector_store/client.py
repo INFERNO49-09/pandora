@@ -44,7 +44,7 @@ async def setup_collections():
     Create Qdrant collections if they don't exist. Idempotent.
     """
     client = get_qdrant()
-    existing = {c.name for c in await client.get_collections().collections}
+    existing = {c.name for c in (await client.get_collections()).collections}
 
     for name, params in COLLECTIONS.items():
         if name not in existing:

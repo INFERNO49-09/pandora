@@ -21,7 +21,7 @@ qdrant-client==1.9.1
 # Task queue
 celery==5.4.0
 redis==5.0.4
-redbeat==2.2.0
+celery-redbeat==2.2.0
 
 # NIM / OpenAI-compatible client
 openai==1.30.1

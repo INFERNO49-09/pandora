@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Allow server components to fetch from local API in dev
   async rewrites() {
     return [

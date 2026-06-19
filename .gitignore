@@ -1,0 +1,22 @@
+# Environment variables (contains secret keys)
+.env
+.env*.local
+
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# Next.js build output (already ignored in frontend/.gitignore but good to have)
+.next/
+out/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
