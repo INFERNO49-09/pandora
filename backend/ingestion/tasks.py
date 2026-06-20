@@ -1,23 +1,15 @@
 """
 Ingestion Celery tasks.
 """
-import asyncio
 from loguru import logger
+from core.async_utils import run_async
 from core.celery_app import celery_app
 from ingestion.sources.openalex import OpenAlexClient
 from ingestion.sources.arxiv import ArXivClient
 from extraction.engine import KnowledgeExtractor
 from knowledge_graph.graph_writer import GraphWriter
 from models.types import RawPaper
-
-
-def run_async(coro):
-    """Run async coroutine in Celery (sync) context."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+from vector_store.indexer import index_paper_extraction
 
 
 @celery_app.task(
@@ -66,9 +58,18 @@ async def _ingest_paper_async(paper: RawPaper) -> dict:
         logger.warning(f"Extraction error for '{paper.title[:60]}': {extraction.error}")
         # Still write the paper node even if extraction failed
         await writer.write_paper_with_extraction(paper, extraction)
+        try:
+            await index_paper_extraction(paper, extraction)
+        except Exception as exc:
+            logger.warning(f"Vector indexing failed for '{paper.title[:60]}': {exc}")
         return {"status": "partial", "paper_id": extraction.paper_id, "error": extraction.error}
 
     paper_id = await writer.write_paper_with_extraction(paper, extraction)
+    try:
+        vector_counts = await index_paper_extraction(paper, extraction)
+    except Exception as exc:
+        logger.warning(f"Vector indexing failed for '{paper.title[:60]}': {exc}")
+        vector_counts = {}
 
     return {
         "status": "complete",
@@ -76,6 +77,7 @@ async def _ingest_paper_async(paper: RawPaper) -> dict:
         "concepts_extracted": len(extraction.concepts),
         "methods_extracted": len(extraction.methods),
         "relations_extracted": len(extraction.relations),
+        "vectors_indexed": vector_counts,
     }
 
 

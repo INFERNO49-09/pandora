@@ -178,6 +178,55 @@ export interface LinkPrediction {
   model_name: string;
 }
 
+// ── BOOKMARKS ─────────────────────────────────────────────────────────────
+
+export interface BookmarkItem {
+  id: string;
+  entity_type: "opportunity" | "paper" | "concept" | "domain";
+  entity_id: string;
+  entity_title: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// ── QUERY HISTORY ─────────────────────────────────────────────────────────
+
+export interface QueryHistoryItem {
+  id: string;
+  query_text: string;
+  query_type: "copilot" | "predict" | "gap" | "search";
+  response_ms: number | null;
+  agents_used: string[];
+  created_at: string;
+}
+
+// ── SYSTEM / LLM PROVIDER ────────────────────────────────────────────────
+
+export interface LlmStatus {
+  provider: "nim" | "local";
+  chat_model: string;
+  embed_model: string;
+  base_url: string;
+  status: "ok" | "unreachable" | "model_not_pulled" | "unknown";
+  latency_ms?: number;
+  available_models?: string[];
+  error?: string;
+  warning?: string;
+  hint?: string;
+  is_local: boolean;
+  embed_dim: number;
+  note: string;
+}
+
+export interface LlmTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  response?: string;
+  error?: string;
+  latency_ms: number;
+}
+
 // ── API FUNCTIONS ─────────────────────────────────────────────────────────
 
 export const api = {
@@ -215,11 +264,64 @@ export const api = {
       post<{ job_id: string; status: string; message: string }>("/ingest/seed", { topic, source, max_results }),
     jobStatus: (job_id: string) => get<{ job_id: string; status: string; result?: unknown }>(`/ingest/jobs/${job_id}`),
     status: () => get<{ papers_in_graph: number; papers_this_year: number; most_recent_year: number }>("/ingest/status"),
+    parsePdf: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BASE}/ingest/pdf/parse`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "PDF parse failed");
+      return data as {
+        filename: string;
+        page_count: number;
+        text_preview: string;
+        parsed: { title: string; abstract: string; authors: string[]; year: number | null; doi: string | null };
+      };
+    },
+    uploadPdf: async (file: File, overrides?: { title?: string; abstract?: string; authors?: string; year?: string; venue?: string }) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (overrides?.title)    form.append("title_override", overrides.title);
+      if (overrides?.abstract) form.append("abstract_override", overrides.abstract);
+      if (overrides?.authors)  form.append("authors_override", overrides.authors);
+      if (overrides?.year)     form.append("year_override", overrides.year);
+      if (overrides?.venue)    form.append("venue", overrides.venue);
+      const res = await fetch(`${BASE}/ingest/pdf`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "PDF ingestion failed");
+      return data as { job_id: string; status: string; status_url: string; parsed: Record<string, unknown>; message: string };
+    },
   },
   predict: {
     links: (node_id: string, node_type: string, top_k = 10) =>
       post<{ predictions: LinkPrediction[]; source_node: { name: string } }>("/predict/links", { node_id, node_type, top_k }),
     missingConnections: (domain: string) =>
       get<{ missing_connections: { source_name: string; target_name: string; similarity: number }[] }>("/predict/missing-connections", { domain }),
+  },
+  bookmarks: {
+    list: (entity_type?: string, limit = 100, offset = 0) => {
+      const params: Record<string, string | number> = { limit, offset };
+      if (entity_type) params.entity_type = entity_type;
+      return get<{ bookmarks: BookmarkItem[]; total: number; offset: number; limit: number }>("/bookmarks", params as Record<string, string | number | boolean>);
+    },
+    create: (entity_type: string, entity_id: string, entity_title?: string, notes?: string) =>
+      post<BookmarkItem>("/bookmarks", { entity_type, entity_id, entity_title, notes }),
+    check: (entity_type: string, entity_id: string) =>
+      get<{ bookmarked: boolean; bookmark_id?: string; notes?: string; created_at?: string }>(`/bookmarks/check/${entity_type}/${encodeURIComponent(entity_id)}`),
+    remove: (bookmark_id: string) =>
+      fetch(`${BASE}/bookmarks/${bookmark_id}`, { method: "DELETE" }),
+    update: (bookmark_id: string, notes?: string, entity_title?: string) =>
+      post<BookmarkItem>(`/bookmarks/${bookmark_id}`, { notes, entity_title }),
+  },
+  history: {
+    list: (query_type?: string, limit = 20, offset = 0) => {
+      const params: Record<string, string | number> = { limit, offset };
+      if (query_type) params.query_type = query_type;
+      return get<{ queries: QueryHistoryItem[]; limit: number; offset: number }>("/history", params as Record<string, string | number | boolean>);
+    },
+    stats: () => get<{ by_type: Record<string, { total: number; last_at: string | null; avg_response_ms: number | null }>; total_queries: number }>("/history/stats"),
+  },
+  system: {
+    llmStatus: () => get<LlmStatus>("/system/llm"),
+    llmTest: (prompt?: string) => post<LlmTestResult>("/system/llm/test", prompt ? { prompt } : {}),
   },
 };

@@ -13,13 +13,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from auth.middleware import User, optional_user, rate_limiter
+
 router = APIRouter(prefix="/copilot", tags=["copilot"])
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class CopilotRequest(BaseModel):
@@ -34,16 +40,35 @@ def _sse(event_type: str, data: dict | str) -> str:
 
 
 @router.post("/query")
-async def copilot_query(req: CopilotRequest):
+async def copilot_query(
+    req: CopilotRequest,
+    current_user: User | None = Depends(optional_user),
+):
     """
     Main copilot endpoint. Streams agent execution as SSE.
+    Rate-limited: free tier users get 50 queries/month.
 
     Example curl:
         curl -N -X POST http://localhost:8000/api/v1/copilot/query \\
           -H "Content-Type: application/json" \\
           -d '{"query": "What are unexplored opportunities in federated learning?"}'
     """
+    # Enforce rate limit for authenticated users
+    if current_user:
+        allowed = await rate_limiter.check_and_increment(current_user, "query")
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "error": "Monthly query limit reached",
+                    "tier": current_user.tier,
+                    "limit": current_user.monthly_query_limit,
+                    "upgrade": "Upgrade to researcher tier for unlimited queries.",
+                },
+            )
+
     thread_id = req.thread_id or str(uuid.uuid4())
+    start_ms = int(time.time() * 1000)
 
     async def event_stream():
         try:
@@ -58,27 +83,45 @@ async def copilot_query(req: CopilotRequest):
                     yield chunk
                 return
 
-            # Stream agent trace events while graph runs
+            from agents.discovery_graph import get_agent_graph
+            graph = get_agent_graph()
+
+            initial_state = {
+                "query": req.query,
+                "intent": "",
+                "papers_found": [],
+                "opportunities_found": [],
+                "trends_found": [],
+                "hypotheses": [],
+                "agent_trace": [],
+                "response": "",
+                "citations": [],
+                "done": False,
+            }
+            config = {"configurable": {"thread_id": thread_id}}
+
+            # Stream intermediate agent trace events while graph runs
             yield _sse("thinking", {"message": "Analyzing your query...", "agent": "router"})
 
-            # Run the full agent graph
-            final_state = await run_discovery_query(req.query, thread_id)
+            async for output in graph.astream(initial_state, config=config, stream_mode="updates"):
+                for node_name, node_state in output.items():
+                    if "agent_trace" in node_state:
+                        for trace in node_state["agent_trace"]:
+                            yield _sse("thinking", {"message": trace, "agent": node_name})
+                    # Stream opportunities early if found
+                    if "opportunities_found" in node_state:
+                        for opp in node_state["opportunities_found"][:3]:
+                            yield _sse("opportunity", {
+                                "id":    opp.get("id"),
+                                "title": opp.get("title"),
+                                "domain_a": opp.get("domain_a"),
+                                "domain_b": opp.get("domain_b"),
+                                "score": opp.get("score", 0),
+                            })
 
-            # Stream agent trace
-            for trace in final_state.get("agent_trace", []):
-                yield _sse("thinking", {"message": trace})
-                await asyncio.sleep(0.05)
-
-            # Stream opportunities found
-            for opp in final_state.get("opportunities_found", [])[:3]:
-                yield _sse("opportunity", {
-                    "id":    opp.get("id"),
-                    "title": opp.get("title"),
-                    "domain_a": opp.get("domain_a"),
-                    "domain_b": opp.get("domain_b"),
-                    "score": opp.get("score", 0),
-                })
-                await asyncio.sleep(0.1)
+            # Get final state
+            final_state_wrapper = await graph.aget_state(config)
+            final_state = final_state_wrapper.values
 
             # Stream response text word by word (simulated streaming)
             response = final_state.get("response", "")
@@ -102,6 +145,18 @@ async def copilot_query(req: CopilotRequest):
                     t.split(" →")[0] for t in final_state.get("agent_trace", [])
                 }),
             })
+
+            # Log query to history (fire-and-forget)
+            agents = list({t.split(" →")[0] for t in final_state.get("agent_trace", [])})
+            elapsed = int(time.time() * 1000) - start_ms
+            from api.v1.query_history import log_query
+            await log_query(
+                user_id=current_user.id if current_user else None,
+                query_text=req.query,
+                query_type="copilot",
+                response_ms=elapsed,
+                agents_used=agents,
+            )
 
         except Exception as e:
             yield _sse("error", {"message": str(e)})

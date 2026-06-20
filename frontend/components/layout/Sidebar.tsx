@@ -13,6 +13,9 @@ import {
   AlertTriangle,
   MessageSquare,
   Cpu,
+  Bookmark,
+  History,
+  Settings,
 } from "lucide-react";
 
 const NAV = [
@@ -23,8 +26,10 @@ const NAV = [
   { href: "/predict",        icon: Zap,            label: "Predict"         },
   { href: "/contradictions", icon: AlertTriangle,  label: "Contradictions"  },
   { href: "/copilot",        icon: MessageSquare,  label: "Copilot"         },
+  { href: "/bookmarks",      icon: Bookmark,       label: "Bookmarks"       },
   { href: "/models",         icon: Cpu,            label: "Models"          },
   { href: "/ingest",         icon: Upload,         label: "Ingest"          },
+  { href: "/settings",       icon: Settings,       label: "Settings"        },
 ];
 
 export function Sidebar() {

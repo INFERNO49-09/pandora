@@ -11,7 +11,6 @@ Manual trigger via API:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -20,15 +19,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from core.async_utils import run_async
 from core.celery_app import celery_app
-
-
-def run_async(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 # ── TRAINING TASKS ────────────────────────────────────────────────────────────
@@ -236,6 +228,7 @@ async def _train_transe_async(
 async def _refresh_embeddings_async(node_type: str | None) -> dict:
     from knowledge_graph.client import run_query
     from vector_store.client import upsert_vectors
+    from vector_store.indexer import qdrant_point_id
     from core.nim_client import nim_embed
 
     NODE_CONFIGS = {
@@ -273,7 +266,7 @@ async def _refresh_embeddings_async(node_type: str | None) -> dict:
                 vectors = await nim_embed(batch_texts)
                 points = [
                     {
-                        "id":      abs(hash(n["id"])) % (2**63),
+                        "id":      qdrant_point_id(n["id"]),
                         "vector":  vec,
                         "payload": {
                             "node_id": n["id"],
@@ -295,6 +288,7 @@ async def _refresh_embeddings_async(node_type: str | None) -> dict:
 async def _embed_new_papers_async(since_hours: int) -> dict:
     from knowledge_graph.client import run_query
     from vector_store.client import upsert_vectors
+    from vector_store.indexer import qdrant_point_id
     from core.nim_client import nim_embed
 
     papers = await run_query(
@@ -315,7 +309,7 @@ async def _embed_new_papers_async(since_hours: int) -> dict:
     vectors = await nim_embed(texts)
     points = [
         {
-            "id":      abs(hash(p["id"])) % (2**63),
+            "id":      qdrant_point_id(p["id"]),
             "vector":  vec,
             "payload": {"node_id": p["id"], "title": p["title"], "type": "Paper"},
         }

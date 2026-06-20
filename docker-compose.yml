@@ -102,6 +102,11 @@ services:
       - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY}
       - NIM_CHAT_MODEL=${NIM_CHAT_MODEL:-meta/llama-3.1-70b-instruct}
       - NIM_EMBED_MODEL=${NIM_EMBED_MODEL:-nvidia/nv-embedqa-e5-v5}
+      - LLM_PROVIDER=${LLM_PROVIDER:-nim}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_CHAT_MODEL=${LOCAL_CHAT_MODEL:-llama3}
+      - LOCAL_EMBED_MODEL=${LOCAL_EMBED_MODEL:-nomic-embed-text}
+      - LOCAL_EMBED_DIM=${LOCAL_EMBED_DIM:-768}
     volumes:
       - ./backend:/app
       - ./scripts:/scripts
@@ -136,6 +141,11 @@ services:
       - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY}
       - NIM_CHAT_MODEL=${NIM_CHAT_MODEL:-meta/llama-3.1-70b-instruct}
       - NIM_EMBED_MODEL=${NIM_EMBED_MODEL:-nvidia/nv-embedqa-e5-v5}
+      - LLM_PROVIDER=${LLM_PROVIDER:-nim}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_CHAT_MODEL=${LOCAL_CHAT_MODEL:-llama3}
+      - LOCAL_EMBED_MODEL=${LOCAL_EMBED_MODEL:-nomic-embed-text}
+      - LOCAL_EMBED_DIM=${LOCAL_EMBED_DIM:-768}
     volumes:
       - ./backend:/app
     depends_on:
@@ -165,6 +175,11 @@ services:
       - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY}
       - NIM_CHAT_MODEL=${NIM_CHAT_MODEL:-meta/llama-3.1-70b-instruct}
       - NIM_EMBED_MODEL=${NIM_EMBED_MODEL:-nvidia/nv-embedqa-e5-v5}
+      - LLM_PROVIDER=${LLM_PROVIDER:-nim}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_CHAT_MODEL=${LOCAL_CHAT_MODEL:-llama3}
+      - LOCAL_EMBED_MODEL=${LOCAL_EMBED_MODEL:-nomic-embed-text}
+      - LOCAL_EMBED_DIM=${LOCAL_EMBED_DIM:-768}
     volumes:
       - ./backend:/app
     depends_on:

@@ -53,3 +53,4 @@ tenacity==8.3.0
 # Utilities
 loguru==0.7.2
 orjson==3.10.3
+pypdf==5.9.0

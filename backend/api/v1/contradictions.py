@@ -45,7 +45,8 @@ async def trigger_scan(
                 limit=100,
             )
             logger.info(f"Scan complete: {len(contradictions)} contradictions found")
-            # TODO: persist results to PostgreSQL
+            # Persist results to PostgreSQL and Neo4j
+            await _detector.persist_contradictions(contradictions)
         except Exception as e:
             logger.error(f"Contradiction scan failed: {e}")
 

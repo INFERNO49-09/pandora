@@ -1,22 +1,89 @@
-# Environment variables (contains secret keys)
+# Environment variables
 .env
-.env*.local
+.env.*
+!.env.example
 
-# Python files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.venv/
-venv/
-env/
-ENV/
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Next.js build output (already ignored in frontend/.gitignore but good to have)
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Pytest and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Node.js / Next.js
+node_modules/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 .next/
 out/
-node_modules/
+build/
+dist/
+.vercel/
 
-# OS files
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Database data mounts
+infrastructure/data/
+docker-data/
+
+# Logs
+logs/
+*.log
+
+# Other
+coverage/
+.cache/

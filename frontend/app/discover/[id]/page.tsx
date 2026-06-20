@@ -4,6 +4,7 @@ import { scoreColor, scoreLabel, timeAgo } from "@/lib/utils";
 import Link from "next/link";
 import { ArrowLeft, BookOpen, FlaskConical, Lightbulb, AlertTriangle } from "lucide-react";
 import { notFound } from "next/navigation";
+import { BookmarkButton } from "@/components/ui/BookmarkButton";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -42,7 +43,8 @@ export default async function OpportunityDetailPage({ params }: Props) {
         <h1 style={{ fontSize: "22px", fontWeight: 600, margin: "0 0 8px", lineHeight: 1.3 }}>
           {opp.title}
         </h1>
-        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
+          <BookmarkButton entityType="opportunity" entityId={opp.id} entityTitle={opp.title} />
           <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
             <span
               style={{

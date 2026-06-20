@@ -2,20 +2,12 @@
 Discovery Celery tasks.
 Run nightly to scan for research opportunities.
 """
-import asyncio
 from loguru import logger
+from core.async_utils import run_async
 from core.celery_app import celery_app
 from discovery.cargs import scan_all_domain_pairs
 from discovery.hypothesis_generator import HypothesisGenerator
 from knowledge_graph.client import run_query
-
-
-def run_async(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @celery_app.task(name="discovery.tasks.run_full_discovery_scan")
@@ -168,5 +160,9 @@ async def _run_contradiction_scan_async(domain: str | None) -> dict:
     from discovery.contradiction_detector import ContradictionDetector
     detector = ContradictionDetector()
     contradictions = await detector.scan_domain(domain=domain, min_confidence=0.70, limit=100)
+    
+    if contradictions:
+        await detector.persist_contradictions(contradictions)
+        
     logger.info(f"Contradiction scan complete: {len(contradictions)} found")
     return {"contradictions_found": len(contradictions), "domain": domain}

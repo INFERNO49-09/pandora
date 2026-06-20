@@ -3,20 +3,13 @@ Extraction Celery tasks.
 Separated from ingestion tasks so the extraction worker
 can be scaled independently from the fetching worker.
 """
-import asyncio
 from loguru import logger
+from core.async_utils import run_async
 from core.celery_app import celery_app
 from extraction.engine import KnowledgeExtractor
 from knowledge_graph.graph_writer import GraphWriter
 from models.types import RawPaper, ExtractionResult
-
-
-def run_async(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+from vector_store.indexer import index_paper_extraction, qdrant_point_id
 
 
 @celery_app.task(
@@ -53,6 +46,11 @@ async def _extract_and_write_async(paper: RawPaper) -> dict:
 
     extraction = await extractor.extract(paper)
     paper_id = await writer.write_paper_with_extraction(paper, extraction)
+    try:
+        vector_counts = await index_paper_extraction(paper, extraction)
+    except Exception as exc:
+        logger.warning(f"Vector indexing failed for '{paper.title[:60]}': {exc}")
+        vector_counts = {}
 
     return {
         "paper_id": paper_id,
@@ -60,6 +58,7 @@ async def _extract_and_write_async(paper: RawPaper) -> dict:
         "methods": len(extraction.methods),
         "relations": len(extraction.relations),
         "error": extraction.error,
+        "vectors_indexed": vector_counts,
     }
 
 
@@ -107,7 +106,7 @@ async def _embed_concepts_async(domain: str | None) -> dict:
 
         points = [
             {
-                "id": abs(hash(c["id"])) % (2**63),  # Qdrant needs uint64
+                "id": qdrant_point_id(c["id"]),
                 "vector": vec,
                 "payload": {
                     "node_id": c["id"],

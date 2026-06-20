@@ -235,8 +235,8 @@ class ContradictionDetector:
               AND p1.abstract IS NOT NULL AND p2.abstract IS NOT NULL
               AND p1.year IS NOT NULL AND p2.year IS NOT NULL
               AND abs(p1.year - p2.year) <= 3
-              AND length(p1.abstract) > 100
-              AND length(p2.abstract) > 100
+              AND size(p1.abstract) > 100
+              AND size(p2.abstract) > 100
               {domain_filter}
             RETURN p1.id AS aid, p1.title AS atitle, p1.abstract AS aabs, p1.year AS ayear,
                    p2.id AS bid, p2.title AS btitle, p2.abstract AS babs, p2.year AS byear
@@ -386,3 +386,76 @@ class ContradictionDetector:
             params=params,
         )
         return results
+
+    async def persist_contradictions(self, contradictions: list[Contradiction]) -> None:
+        """
+        Persist a list of contradictions to both PostgreSQL (tabular reports)
+        and Neo4j (graph edges).
+        """
+        if not contradictions:
+            return
+
+        import asyncpg
+        from core.config import get_settings
+        settings = get_settings()
+
+        # 1. Persist to PostgreSQL
+        try:
+            conn = await asyncpg.connect(settings.POSTGRES_DSN.replace("+asyncpg", ""))
+            await conn.executemany(
+                """
+                INSERT INTO contradiction_reports
+                    (paper_a_id, paper_b_id, dataset_id, metric_id,
+                     paper_a_value, paper_b_value, confidence_score,
+                     explanation, contradiction_type, detected_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                ON CONFLICT DO NOTHING
+                """,
+                [
+                    (
+                        c.paper_a_id,
+                        c.paper_b_id,
+                        c.dataset,
+                        c.metric,
+                        c.paper_a_value,
+                        c.paper_b_value,
+                        c.confidence,
+                        c.explanation,
+                        c.contradiction_type,
+                    )
+                    for c in contradictions
+                ],
+            )
+            logger.info(f"Persisted {len(contradictions)} contradiction reports to PostgreSQL")
+        except Exception as e:
+            logger.error(f"Failed to persist contradictions to PostgreSQL: {e}")
+        finally:
+            if 'conn' in locals() and not conn.is_closed():
+                await conn.close()
+
+        # 2. Persist to Neo4j
+        try:
+            for c in contradictions:
+                await run_query(
+                    """
+                    MATCH (p1:Paper {id: $paper_a_id})
+                    MATCH (p2:Paper {id: $paper_b_id})
+                    MERGE (p1)-[r:CONTRADICTS]->(p2)
+                    SET r.confidence = $confidence,
+                        r.evidence = $explanation,
+                        r.type = $type,
+                        r.detected_at = datetime()
+                    """,
+                    params={
+                        "paper_a_id": c.paper_a_id,
+                        "paper_b_id": c.paper_b_id,
+                        "confidence": c.confidence,
+                        "explanation": c.explanation,
+                        "type": c.contradiction_type,
+                    },
+                    write=True,
+                )
+            logger.info(f"Persisted {len(contradictions)} contradiction edges to Neo4j")
+        except Exception as e:
+            logger.error(f"Failed to persist contradictions to Neo4j: {e}")
+

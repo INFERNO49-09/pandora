@@ -1,4 +1,5 @@
 from functools import lru_cache
+import inspect
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
@@ -16,15 +17,15 @@ settings = get_settings()
 
 COLLECTIONS = {
     "concepts": {
-        "size": settings.NIM_EMBED_DIM,
+        "size": settings.active_embed_dim,
         "distance": Distance.COSINE,
     },
     "papers": {
-        "size": settings.NIM_EMBED_DIM,
+        "size": settings.active_embed_dim,
         "distance": Distance.COSINE,
     },
     "domains": {
-        "size": settings.NIM_EMBED_DIM,
+        "size": settings.active_embed_dim,
         "distance": Distance.COSINE,
     },
 }
@@ -37,6 +38,18 @@ def get_qdrant() -> AsyncQdrantClient:
         port=settings.QDRANT_PORT,
         timeout=30,
     )
+
+
+async def close_qdrant() -> None:
+    """Close the cached async Qdrant client, if one exists."""
+    if get_qdrant.cache_info().currsize == 0:
+        return
+
+    client = get_qdrant()
+    result = client.close()
+    if inspect.isawaitable(result):
+        await result
+    get_qdrant.cache_clear()
 
 
 async def setup_collections():
