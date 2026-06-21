@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/primitives";
 import { Send, Telescope, Loader, BookOpen, Zap } from "lucide-react";
 import Link from "next/link";
+import { BASE } from "@/lib/api";
 
 interface SSEEvent {
   type: "thinking" | "token" | "citation" | "opportunity" | "complete" | "error";
@@ -68,7 +69,7 @@ export default function CopilotPage() {
     setStreaming(true);
 
     try {
-      const res = await fetch("/api/v1/copilot/query", {
+      const res = await fetch(`${BASE}/copilot/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, thread_id: threadId.current }),

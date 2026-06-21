@@ -55,6 +55,14 @@ async def close_qdrant() -> None:
 async def setup_collections():
     """
     Create Qdrant collections if they don't exist. Idempotent.
+
+    Also detects the case where a collection already exists but was created
+    with a different vector size than the currently active embedding model
+    (e.g. after switching LLM_PROVIDER between NIM and a local model with a
+    different embedding dimension). In that case the collection is dropped
+    and recreated at the new size — any previously indexed vectors are lost
+    and need to be re-ingested, but this avoids every subsequent upsert
+    failing silently with a dimension-mismatch error forever.
     """
     client = get_qdrant()
     existing = {c.name for c in (await client.get_collections()).collections}
@@ -69,6 +77,26 @@ async def setup_collections():
                 ),
             )
             logger.info(f"Created Qdrant collection: {name}")
+            continue
+
+        info = await client.get_collection(name)
+        current_size = info.config.params.vectors.size
+        if current_size != params["size"]:
+            logger.warning(
+                f"Qdrant collection '{name}' has vector size {current_size}, "
+                f"but the active embedding model produces {params['size']}-dim "
+                f"vectors. Recreating the collection at the new size; "
+                f"previously indexed vectors will need to be re-ingested."
+            )
+            await client.delete_collection(name)
+            await client.create_collection(
+                collection_name=name,
+                vectors_config=VectorParams(
+                    size=params["size"],
+                    distance=params["distance"],
+                ),
+            )
+            logger.info(f"Recreated Qdrant collection: {name} (size={params['size']})")
         else:
             logger.debug(f"Qdrant collection exists: {name}")
 

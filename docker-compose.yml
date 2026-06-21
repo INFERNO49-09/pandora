@@ -110,6 +110,8 @@ services:
     volumes:
       - ./backend:/app
       - ./scripts:/scripts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       neo4j:
         condition: service_healthy
@@ -148,6 +150,8 @@ services:
       - LOCAL_EMBED_DIM=${LOCAL_EMBED_DIM:-768}
     volumes:
       - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - neo4j
@@ -182,6 +186,8 @@ services:
       - LOCAL_EMBED_DIM=${LOCAL_EMBED_DIM:-768}
     volumes:
       - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     command: celery -A core.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
@@ -197,6 +203,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - API_INTERNAL_URL=http://api:8000
     depends_on:
       - api
     restart: unless-stopped

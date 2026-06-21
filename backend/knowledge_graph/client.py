@@ -62,9 +62,10 @@ async def setup_schema():
     schema_queries = [
         # ── CONSTRAINTS (enforce uniqueness) ──────────────────────────────
         "CREATE CONSTRAINT paper_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.id IS UNIQUE",
+        "CREATE CONSTRAINT paper_source_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.source_id IS UNIQUE",
         "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
         "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
-        "CREATE CONSTRAINT institution_ror IF NOT EXISTS FOR (i:Institution) REQUIRE i.ror_id IS UNIQUE",
+        "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
         "CREATE CONSTRAINT method_id IF NOT EXISTS FOR (m:Method) REQUIRE m.id IS UNIQUE",
         "CREATE CONSTRAINT dataset_id IF NOT EXISTS FOR (d:Dataset) REQUIRE d.id IS UNIQUE",
         "CREATE CONSTRAINT domain_id IF NOT EXISTS FOR (d:Domain) REQUIRE d.id IS UNIQUE",

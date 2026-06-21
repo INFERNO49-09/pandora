@@ -3,22 +3,7 @@
 import { useEffect, useState } from "react";
 import { SectionHeader, Badge, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-
-interface Contradiction {
-  id?: string;
-  paper_a_id: string;
-  paper_a_title: string;
-  paper_b_id: string;
-  paper_b_title: string;
-  dataset?: string;
-  metric?: string;
-  paper_a_value?: number;
-  paper_b_value?: number;
-  confidence_score: number;
-  explanation: string;
-  contradiction_type: string;
-  methodology_analysis?: string;
-}
+import { api, Contradiction } from "@/lib/api";
 
 const TYPE_META: Record<string, { label: string; color: string; bg: string }> = {
   quantitative:   { label: "Quantitative",   color: "var(--color-amber)",  bg: "rgba(245,158,11,0.10)" },
@@ -37,13 +22,12 @@ export default function ContradictionsPage() {
   const fetchContradictions = async (d?: string, t?: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (d) params.set("domain", d);
-      if (t) params.set("contradiction_type", t);
-      params.set("min_confidence", "0.65");
-      params.set("limit", "50");
-      const res = await fetch(`/api/v1/contradictions?${params}`);
-      const data = await res.json();
+      const data = await api.contradictions.list({
+        domain: d || undefined,
+        contradiction_type: t || undefined,
+        min_confidence: 0.65,
+        limit: 50,
+      });
       setContradictions(data.contradictions || []);
     } catch (e) {
       console.error(e);
@@ -55,7 +39,7 @@ export default function ContradictionsPage() {
   const triggerScan = async () => {
     setScanning(true);
     try {
-      await fetch(`/api/v1/contradictions/scan${domain ? `?domain=${domain}` : ""}`, { method: "POST" });
+      await api.contradictions.scan(domain || undefined);
       await new Promise(r => setTimeout(r, 3000));
       await fetchContradictions(domain, typeFilter);
     } catch (e) {

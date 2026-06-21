@@ -142,8 +142,13 @@ class KnowledgeExtractor:
 
     def _compute_paper_id(self, paper: RawPaper) -> str:
         """
-        Stable paper ID. Precedence: DOI > arXiv ID > hash of title+year.
+        Stable paper ID. Source IDs come first for OpenAlex so citation edges
+        that reference OpenAlex work IDs collapse onto the full paper node.
         """
+        if paper.openalex_id:
+            return f"openalex:{paper.openalex_id}"
+        if paper.source == "openalex" and paper.source_id:
+            return f"openalex:{paper.source_id}"
         if paper.doi:
             return f"doi:{paper.doi.lower()}"
         if paper.arxiv_id:

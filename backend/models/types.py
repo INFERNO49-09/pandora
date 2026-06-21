@@ -60,16 +60,25 @@ class OpportunityStatus(str, Enum):
 class RawPaper(BaseModel):
     source: str                         # "arxiv", "openalex", "pubmed"
     source_id: str                      # ID within that source
+    openalex_id: str | None = None
     doi: str | None = None
     arxiv_id: str | None = None
     title: str
     abstract: str
-    authors: list[str] = []
+    authors: list[str] = Field(default_factory=list)
+    authorships: list[dict[str, Any]] = Field(default_factory=list)
+    institutions: list[dict[str, Any]] = Field(default_factory=list)
     year: int | None = None
     venue: str | None = None
     citation_count: int = 0
-    references: list[str] = []          # DOIs or source IDs of cited papers
-    keywords: list[str] = []
+    references: list[str] = Field(default_factory=list)  # DOIs or source IDs of cited papers
+    referenced_works: list[str] = Field(default_factory=list)
+    concepts: list[dict[str, Any]] = Field(default_factory=list)
+    topics: list[dict[str, Any]] = Field(default_factory=list)
+    primary_topic: dict[str, Any] | None = None
+    keywords: list[str] = Field(default_factory=list)
+    content_hash: str | None = None
+    raw_metadata: dict[str, Any] = Field(default_factory=dict)
     url: str | None = None
     pdf_url: str | None = None
 
@@ -110,11 +119,11 @@ class ExtractedProblem(BaseModel):
 
 class ExtractionResult(BaseModel):
     paper_id: str
-    concepts: list[ExtractedConcept] = []
-    methods: list[ExtractedMethod] = []
-    relations: list[ExtractedRelation] = []
-    open_problems: list[ExtractedProblem] = []
-    domains: list[str] = []
+    concepts: list[ExtractedConcept] = Field(default_factory=list)
+    methods: list[ExtractedMethod] = Field(default_factory=list)
+    relations: list[ExtractedRelation] = Field(default_factory=list)
+    open_problems: list[ExtractedProblem] = Field(default_factory=list)
+    domains: list[str] = Field(default_factory=list)
     error: str | None = None
 
 

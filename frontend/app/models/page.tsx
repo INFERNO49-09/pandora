@@ -4,30 +4,7 @@ import { useEffect, useState } from "react";
 import { SectionHeader, Badge, StatCard, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { Cpu, CheckCircle, Clock, Play, RefreshCw } from "lucide-react";
-
-interface ModelRecord {
-  id: string;
-  model_name: string;
-  model_type: string;
-  relation_type: string;
-  test_mrr: number;
-  hits_at_1: number;
-  hits_at_10: number;
-  is_active: boolean;
-  trained_at: string | null;
-  hyperparameters: Record<string, unknown>;
-  training_duration_s: number | null;
-}
-
-interface MetricSeries {
-  [key: string]: Array<{
-    trained_at: string | null;
-    test_mrr: number;
-    hits_at_1: number;
-    hits_at_10: number;
-    is_active: boolean;
-  }>;
-}
+import { api, ModelRecord, ModelMetricSeries } from "@/lib/api";
 
 const TYPE_COLOR: Record<string, string> = {
   graphsage:            "var(--color-indigo)",
@@ -39,7 +16,7 @@ const TYPE_COLOR: Record<string, string> = {
 export default function ModelsPage() {
   const [models,   setModels]   = useState<ModelRecord[]>([]);
   const [active,   setActive]   = useState<ModelRecord[]>([]);
-  const [metrics,  setMetrics]  = useState<MetricSeries>({});
+  const [metrics,  setMetrics]  = useState<ModelMetricSeries>({});
   const [loading,  setLoading]  = useState(true);
   const [training, setTraining] = useState(false);
   const [trainForm, setTrainForm] = useState({
@@ -53,9 +30,9 @@ export default function ModelsPage() {
     setLoading(true);
     try {
       const [m, a, met] = await Promise.all([
-        fetch("/api/v1/models?limit=30").then(r => r.json()),
-        fetch("/api/v1/models/active").then(r => r.json()),
-        fetch("/api/v1/models/metrics").then(r => r.json()),
+        api.models.list(30),
+        api.models.active(),
+        api.models.metrics(),
       ]);
       setModels(m.models || []);
       setActive(a.active_models || []);
@@ -73,14 +50,7 @@ export default function ModelsPage() {
     setTraining(true);
     try {
       const token = localStorage.getItem("pandora_token");
-      const res = await fetch("/api/v1/models/train", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(trainForm),
-      });
+      const res = await api.models.train(token, trainForm);
       const data = await res.json();
       if (res.ok) {
         alert(`Training queued! Task ID: ${data.task_id}`);

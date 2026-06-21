@@ -31,6 +31,13 @@ async def _close_loop_bound_clients() -> None:
     except Exception as exc:
         logger.warning(f"Failed to close Qdrant client: {exc}")
 
+    try:
+        from ingestion.state import close_pool
+
+        await close_pool()
+    except Exception as exc:
+        logger.warning(f"Failed to close Postgres pool: {exc}")
+
 
 def run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """
