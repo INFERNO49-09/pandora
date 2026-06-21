@@ -74,7 +74,7 @@ class EnsemblePredictor:
         Main prediction entry point.
         Checks cache first, then runs ensemble.
         """
-        cache_key = f"pred:{node_id}:{relation_type}:{top_k}"
+        cache_key = f"pred:{node_id}:{node_type}:{relation_type}:{top_k}:{min_confidence}"
         r = await self._get_redis()
 
         # Cache hit
@@ -111,13 +111,10 @@ class EnsemblePredictor:
         predictions = self._ensemble(
             model_results, relation_type, top_k, min_confidence
         )
+        predictions = await self.enrich_predictions(predictions)
 
         # Cache result
-        await r.set(
-            cache_key,
-            json.dumps([p.__dict__ for p in predictions]),
-            ex=self.CACHE_TTL,
-        )
+        await r.set(cache_key, json.dumps([p.__dict__ for p in predictions]), ex=self.CACHE_TTL)
 
         return predictions
 
@@ -184,8 +181,7 @@ class EnsemblePredictor:
         """
         GraphSAGE inference. Skips gracefully if model not loaded.
         """
-        # Check for trained model artifact
-        model_path = Path(f"/models/pandora_graphsage_{node_type}__RELATED_TO__{node_type}.pt")
+        model_path = self._find_graphsage_artifact(node_type)
         if not model_path.exists():
             logger.debug(f"No GraphSAGE model at {model_path}, skipping")
             return []
@@ -193,13 +189,48 @@ class EnsemblePredictor:
         try:
             import torch
             checkpoint = torch.load(model_path, map_location="cpu")
+            node_id_map = checkpoint.get("node_id_map", {}).get(node_type, {})
+            node_embeddings = checkpoint.get("node_embeddings", {}).get(node_type)
+            if node_id not in node_id_map or node_embeddings is None:
+                return []
+
+            reverse_map = {idx: nid for nid, idx in node_id_map.items()}
+            source_idx = node_id_map[node_id]
+            source_emb = node_embeddings[source_idx]
+            scores = torch.matmul(node_embeddings, source_emb)
+            ranked = torch.argsort(scores, descending=True).tolist()
+
+            results: list[tuple[str, float]] = []
+            max_score = float(scores[ranked[0]].item()) if ranked else 1.0
+            for idx in ranked:
+                target_id = reverse_map.get(idx)
+                if not target_id or target_id == node_id or target_id in existing_ids:
+                    continue
+                raw_score = float(scores[idx].item())
+                normalized = raw_score / max_score if max_score > 0 else raw_score
+                results.append((target_id, max(0.0, min(1.0, normalized))))
+                if len(results) >= top_k:
+                    break
             logger.debug(f"GraphSAGE model loaded from {model_path}")
-            # Full inference would run here using checkpoint model state
-            # Placeholder: return empty (model training runs separately)
-            return []
+            return results
         except Exception as e:
             logger.warning(f"GraphSAGE inference failed: {e}")
             return []
+
+    def _find_graphsage_artifact(self, node_type: str) -> Path:
+        candidates = [
+            Path(f"/models/pandora_graphsage_{node_type}__RELATED_TO__{node_type}.pt"),
+            Path(f"/tmp/pandora_graphsage_{node_type}__RELATED_TO__{node_type}.pt"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        for root in (Path("/models"), Path("/tmp")):
+            matches = sorted(root.glob(f"pandora_graphsage_*__*__{node_type}.pt"))
+            if matches:
+                return matches[-1]
+        return candidates[0]
 
     async def _transe_predict(
         self,
@@ -211,7 +242,7 @@ class EnsemblePredictor:
         """
         TransE tail prediction. Skips if model not loaded.
         """
-        model_path = Path(f"/models/pandora_transe_Concept__{relation_type}__Concept.pt")
+        model_path = self._find_transe_artifact(relation_type)
         if not model_path.exists():
             return []
 
@@ -219,14 +250,50 @@ class EnsemblePredictor:
             import torch
             checkpoint = torch.load(model_path, map_location="cpu")
             entity_emb = checkpoint.get("entity_emb")
-            if entity_emb is None:
+            relation_emb = checkpoint.get("relation_emb")
+            node_id_map = checkpoint.get("node_id_map", {})
+            if entity_emb is None or relation_emb is None or node_id not in node_id_map:
                 return []
+            reverse_map = {idx: nid for nid, idx in node_id_map.items()}
+            head_idx = node_id_map[node_id]
+            head = entity_emb[head_idx]
+            relation = relation_emb[0]
+            scores = -torch.linalg.vector_norm(head + relation - entity_emb, dim=1)
+            ranked = torch.argsort(scores, descending=True).tolist()
+
+            best = float(scores[ranked[0]].item()) if ranked else 0.0
+            worst = float(scores[ranked[min(len(ranked) - 1, top_k * 3)]].item()) if ranked else -1.0
+            denom = max(best - worst, 1e-6)
+            results: list[tuple[str, float]] = []
+            for idx in ranked:
+                target_id = reverse_map.get(idx)
+                if not target_id or target_id == node_id or target_id in existing_ids:
+                    continue
+                normalized = (float(scores[idx].item()) - worst) / denom
+                results.append((target_id, max(0.0, min(1.0, normalized))))
+                if len(results) >= top_k:
+                    break
             logger.debug(f"TransE model loaded for relation {relation_type}")
-            # Full inference runs here
-            return []
+            return results
         except Exception as e:
             logger.warning(f"TransE inference failed: {e}")
             return []
+
+    def _find_transe_artifact(self, relation_type: str) -> Path:
+        candidates = [
+            Path(f"/models/pandora_transe_Concept__{relation_type}__Concept.pt"),
+            Path(f"/tmp/pandora_transe_Concept__{relation_type}__Concept.pt"),
+            Path(f"/models/pandora_transe_Paper__{relation_type}__Paper.pt"),
+            Path(f"/tmp/pandora_transe_Paper__{relation_type}__Paper.pt"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        for root in (Path("/models"), Path("/tmp")):
+            matches = sorted(root.glob(f"pandora_transe_*__{relation_type}__*.pt"))
+            if matches:
+                return matches[-1]
+        return candidates[0]
 
     # ── ENSEMBLE LOGIC ─────────────────────────────────────────────────────
 
@@ -252,6 +319,7 @@ class EnsemblePredictor:
 
         # Aggregate scores per target node
         score_map: dict[str, dict[str, float]] = {}
+        weight_map: dict[str, dict[str, float]] = {}
 
         for model_name, results in model_results.items():
             weight = MODEL_WEIGHTS.get(model_name, 1.0)
@@ -263,12 +331,15 @@ class EnsemblePredictor:
 
                 if target_id not in score_map:
                     score_map[target_id] = {}
+                    weight_map[target_id] = {}
                 score_map[target_id][model_name] = weighted
+                weight_map[target_id][model_name] = weight
 
-        # Compute final ensemble score (mean of available model scores)
+        # Compute final ensemble score from available model outputs only.
         predictions = []
         for target_id, per_model in score_map.items():
-            ensemble_score = sum(per_model.values()) / len(MODEL_WEIGHTS)
+            available_weight = sum(weight_map[target_id].values()) or 1.0
+            ensemble_score = sum(per_model.values()) / available_weight
             if ensemble_score < min_confidence:
                 continue
 
@@ -288,8 +359,7 @@ class EnsemblePredictor:
         predictions.sort(key=lambda p: p.confidence, reverse=True)
         predictions = predictions[:top_k]
 
-        # Enrich with node names from graph
-        return predictions   # names populated by caller via Neo4j
+        return predictions
 
     async def enrich_predictions(
         self,

@@ -5,8 +5,7 @@ import { Badge, EmptyState, SectionHeader } from "@/components/ui/primitives";
 import { Bookmark, BookmarkX, ExternalLink, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 import { scoreColor } from "@/lib/utils";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { BASE } from "@/lib/api";
 
 interface BookmarkItem {
   id: string;

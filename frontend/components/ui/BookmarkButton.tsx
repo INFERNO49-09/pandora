@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { BASE } from "@/lib/api";
 
 interface Props {
   entityType: "opportunity" | "paper" | "concept" | "domain";

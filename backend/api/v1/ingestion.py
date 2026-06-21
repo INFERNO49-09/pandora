@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
 from pydantic import BaseModel
 from knowledge_graph.client import run_query
-from ingestion.tasks import seed_topic, ingest_paper
+from ingestion.tasks import seed_topic, ingest_batch
 
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
 
@@ -200,8 +200,8 @@ async def ingest_single_paper(req: SinglePaperRequest):
         citation_count=req.citation_count,
     )
 
-    task = ingest_paper.apply_async(
-        args=[paper.model_dump()],
+    task = ingest_batch.apply_async(
+        args=[[paper.model_dump()]],
         queue="ingestion",
     )
 
@@ -323,8 +323,8 @@ async def ingest_pdf(
         citation_count=0,
     )
 
-    task = ingest_paper.apply_async(
-        args=[paper.model_dump()],
+    task = ingest_batch.apply_async(
+        args=[[paper.model_dump()]],
         queue="ingestion",
     )
 
@@ -470,8 +470,8 @@ async def ingest_single_paper(req: SinglePaperRequest):
         citation_count=req.citation_count,
     )
 
-    task = ingest_paper.apply_async(
-        args=[paper.model_dump()],
+    task = ingest_batch.apply_async(
+        args=[[paper.model_dump()]],
         queue="ingestion",
     )
 

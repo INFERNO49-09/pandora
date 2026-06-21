@@ -25,14 +25,22 @@ from loguru import logger
 
 
 # Node types we model
-NODE_TYPES = ["Paper", "Concept", "Domain", "Method", "Author"]
+NODE_TYPES = ["Paper", "Concept", "Domain", "Method", "Author", "Institution"]
 
 # Edge types we model (src_type, rel_type, dst_type)
 EDGE_TYPES = [
     ("Paper",   "CITES",        "Paper"),
+    ("Paper",   "CITED_BY",     "Paper"),
     ("Paper",   "IN_DOMAIN",    "Domain"),
+    ("Domain",  "HAS_PAPER",    "Paper"),
     ("Paper",   "USES",         "Concept"),
+    ("Concept", "USED_BY",      "Paper"),
     ("Paper",   "USES",         "Method"),
+    ("Method",  "USED_BY",      "Paper"),
+    ("Author",  "AUTHORED",     "Paper"),
+    ("Paper",   "AUTHORED_BY",  "Author"),
+    ("Author",  "AFFILIATED_WITH", "Institution"),
+    ("Institution", "HAS_AUTHOR", "Author"),
     ("Concept", "RELATED_TO",   "Concept"),
     ("Method",  "VARIANT_OF",   "Method"),
     ("Domain",  "SUBDOMAIN_OF", "Domain"),
@@ -127,6 +135,7 @@ class GraphMLDataLoader:
             "Paper":   "papers",
             "Method":  "concepts",   # methods share concepts collection
             "Author":  "concepts",
+            "Institution": "domains",
         }
 
         for node_type, collection in collection_map.items():
@@ -179,15 +188,7 @@ class GraphMLDataLoader:
             edge_key = f"{src_type}__{rel_type}__{dst_type}"
 
             # Fetch edges with optional year
-            results = await run_query(
-                f"""
-                MATCH (src:{src_type})-[r:{rel_type}]->(dst:{dst_type})
-                WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
-                RETURN src.id AS src_id, dst.id AS dst_id,
-                       coalesce(r.year, src.year, 0) AS year
-                LIMIT 500000
-                """,
-            )
+            results = await run_query(self._edge_query(src_type, rel_type, dst_type))
 
             src_indices, dst_indices, years = [], [], []
             for row in results:
@@ -204,6 +205,47 @@ class GraphMLDataLoader:
                     np.array(dst_indices, dtype=np.int64),
                 )
                 data.edge_years[edge_key] = np.array(years, dtype=np.int32)
+
+    def _edge_query(self, src_type: str, rel_type: str, dst_type: str) -> str:
+        if rel_type == "CITED_BY":
+            return """
+            MATCH (dst:Paper)-[r:CITES]->(src:Paper)
+            WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
+            RETURN src.id AS src_id, dst.id AS dst_id,
+                   coalesce(r.year, dst.year, 0) AS year
+            LIMIT 500000
+            """
+        if rel_type == "HAS_PAPER":
+            return """
+            MATCH (dst:Paper)-[r:IN_DOMAIN]->(src:Domain)
+            WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
+            RETURN src.id AS src_id, dst.id AS dst_id,
+                   coalesce(dst.year, 0) AS year
+            LIMIT 500000
+            """
+        if rel_type == "USED_BY":
+            return f"""
+            MATCH (dst:Paper)-[r:USES]->(src:{src_type})
+            WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
+            RETURN src.id AS src_id, dst.id AS dst_id,
+                   coalesce(dst.year, 0) AS year
+            LIMIT 500000
+            """
+        if rel_type == "HAS_AUTHOR":
+            return """
+            MATCH (dst:Author)-[r:AFFILIATED_WITH]->(src:Institution)
+            WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
+            RETURN src.id AS src_id, dst.id AS dst_id,
+                   0 AS year
+            LIMIT 500000
+            """
+        return f"""
+        MATCH (src:{src_type})-[r:{rel_type}]->(dst:{dst_type})
+        WHERE src.id IS NOT NULL AND dst.id IS NOT NULL
+        RETURN src.id AS src_id, dst.id AS dst_id,
+               coalesce(r.year, src.year, dst.year, 0) AS year
+        LIMIT 500000
+        """
 
     def temporal_split(
         self,

@@ -184,7 +184,9 @@ async def train_graphsage(config: GraphSAGEConfig) -> dict:
 
     device = torch.device(config.device)
     optimizer = torch.optim.Adam(
-        model.sage.parameters(),
+        list(model.input_proj.parameters())
+        + list(model.sage.parameters())
+        + list(model.link_predictor.parameters()),
         lr=config.lr,
         weight_decay=config.weight_decay,
     )
@@ -195,7 +197,9 @@ async def train_graphsage(config: GraphSAGEConfig) -> dict:
     src_type, rel_type, dst_type = config.target_edge_type.split("__")
 
     for epoch in range(config.epochs):
+        model.input_proj.train()
         model.sage.train()
+        model.link_predictor.train()
         optimizer.zero_grad()
 
         # Encode all nodes
@@ -230,10 +234,16 @@ async def train_graphsage(config: GraphSAGEConfig) -> dict:
             logger.info(f"Epoch {epoch}/{config.epochs} — Loss: {loss.item():.4f}")
 
     # Final test evaluation
+    model.input_proj.eval()
     model.sage.eval()
+    model.link_predictor.eval()
     with torch.no_grad():
         h_dict = model.encode(x_dict, edge_index_dict)
         embeddings = h_dict[src_type].cpu()
+        node_embeddings = {
+            node_type: values.detach().cpu()
+            for node_type, values in h_dict.items()
+        }
 
     known_pos = set(zip(src_arr.tolist(), dst_arr.tolist()))
     test_metrics = evaluate_link_prediction(
@@ -244,9 +254,15 @@ async def train_graphsage(config: GraphSAGEConfig) -> dict:
     # Save model
     save_path = Path(f"/tmp/pandora_graphsage_{config.target_edge_type}.pt")
     torch.save({
-        "model_state": model.sage.state_dict(),
+        "input_proj_state": model.input_proj.state_dict(),
+        "sage_state": model.sage.state_dict(),
+        "link_predictor_state": model.link_predictor.state_dict(),
         "config": config.to_dict(),
         "test_metrics": test_metrics.to_dict(),
+        "node_types": NODE_TYPES,
+        "edge_types": EDGE_TYPES,
+        "node_id_map": data.node_id_map,
+        "node_embeddings": node_embeddings,
     }, save_path)
 
     return {
@@ -314,10 +330,13 @@ async def train_transe(config: TransEConfig, edge_key: str) -> dict:
 
     # Save
     save_path = Path(f"/tmp/pandora_transe_{edge_key}.pt")
+    src_type = edge_key.split("__")[0]
     torch.save({
         "entity_emb": model.entity_emb.weight.detach(),
         "relation_emb": model.relation_emb.weight.detach(),
         "config": config.to_dict(),
+        "node_id_map": data.node_id_map.get(src_type, {}),
+        "edge_type": edge_key,
     }, save_path)
 
     return {"model_path": str(save_path), "edge_type": edge_key}

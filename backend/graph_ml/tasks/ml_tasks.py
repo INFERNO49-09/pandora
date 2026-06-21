@@ -77,25 +77,32 @@ def train_all_models():
     Queues individual training tasks per edge type.
     """
     PRIORITY_EDGE_TYPES = [
-        "Concept__RELATED_TO__Concept",
         "Paper__CITES__Paper",
-        "Domain__SUBDOMAIN_OF__Domain",
-        "Method__VARIANT_OF__Method",
+        "Paper__USES__Concept",
+        "Paper__USES__Method",
+        "Author__AUTHORED__Paper",
+        "Author__AFFILIATED_WITH__Institution",
     ]
+    TRANSE_EDGE_TYPES = {
+        "Paper__CITES__Paper",
+        "Concept__RELATED_TO__Concept",
+        "Method__VARIANT_OF__Method",
+        "Domain__SUBDOMAIN_OF__Domain",
+    }
 
     job_ids = []
     for edge_type in PRIORITY_EDGE_TYPES:
-        # GraphSAGE
         t1 = train_graphsage_task.apply_async(
             args=[edge_type],
             queue="discovery",
         )
-        # TransE
-        t2 = train_transe_task.apply_async(
-            args=[edge_type],
-            queue="discovery",
-        )
-        job_ids.extend([t1.id, t2.id])
+        job_ids.append(t1.id)
+        if edge_type in TRANSE_EDGE_TYPES:
+            t2 = train_transe_task.apply_async(
+                args=[edge_type],
+                queue="discovery",
+            )
+            job_ids.append(t2.id)
 
     logger.info(f"Queued {len(job_ids)} training jobs")
     return {"queued_jobs": job_ids}
@@ -186,9 +193,15 @@ async def _train_transe_async(
     from graph_ml.models.transe import TransEConfig
     from graph_ml.training.pipeline import train_transe
 
-    # Count entities for TransE config
     from knowledge_graph.client import run_query
-    src_type = edge_type.split("__")[0]
+    src_type, _, dst_type = edge_type.split("__")
+    if src_type != dst_type:
+        return {
+            "status": "failed",
+            "error": "TransE training currently requires homogeneous edge types",
+            "edge_type": edge_type,
+        }
+
     count_result = await run_query(
         f"MATCH (n:{src_type}) RETURN count(n) AS cnt"
     )
@@ -236,6 +249,8 @@ async def _refresh_embeddings_async(node_type: str | None) -> dict:
         "Domain":  ("domains",  "name"),
         "Paper":   ("papers",   "title"),
         "Method":  ("concepts", "name"),
+        "Author":  ("concepts", "name"),
+        "Institution": ("domains", "name"),
     }
 
     types_to_embed = (

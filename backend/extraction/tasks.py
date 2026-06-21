@@ -6,6 +6,7 @@ can be scaled independently from the fetching worker.
 from loguru import logger
 from core.async_utils import run_async
 from core.celery_app import celery_app
+from entity_resolution.resolver import EntityResolver
 from extraction.engine import KnowledgeExtractor
 from knowledge_graph.graph_writer import GraphWriter
 from models.types import RawPaper, ExtractionResult
@@ -45,6 +46,7 @@ async def _extract_and_write_async(paper: RawPaper) -> dict:
     writer = GraphWriter()
 
     extraction = await extractor.extract(paper)
+    extraction, resolution_stats = EntityResolver().resolve_extraction(extraction)
     paper_id = await writer.write_paper_with_extraction(paper, extraction)
     try:
         vector_counts = await index_paper_extraction(paper, extraction)
@@ -58,6 +60,7 @@ async def _extract_and_write_async(paper: RawPaper) -> dict:
         "methods": len(extraction.methods),
         "relations": len(extraction.relations),
         "error": extraction.error,
+        "entity_resolution": resolution_stats.__dict__,
         "vectors_indexed": vector_counts,
     }
 

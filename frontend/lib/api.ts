@@ -3,7 +3,7 @@
  * All data fetching goes through here — no raw fetch() elsewhere.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+export const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
   const url = new URL(`${BASE}${path}`);
@@ -227,6 +227,50 @@ export interface LlmTestResult {
   latency_ms: number;
 }
 
+// ── GRAPH ML MODELS ───────────────────────────────────────────────────────
+
+export interface ModelRecord {
+  id: string;
+  model_name: string;
+  model_type: string;
+  relation_type: string;
+  test_mrr: number;
+  hits_at_1: number;
+  hits_at_10: number;
+  is_active: boolean;
+  trained_at: string | null;
+  hyperparameters: Record<string, unknown>;
+  training_duration_s: number | null;
+}
+
+export interface ModelMetricSeries {
+  [key: string]: Array<{
+    trained_at: string | null;
+    test_mrr: number;
+    hits_at_1: number;
+    hits_at_10: number;
+    is_active: boolean;
+  }>;
+}
+
+// ── CONTRADICTIONS ────────────────────────────────────────────────────────
+
+export interface Contradiction {
+  id?: string;
+  paper_a_id: string;
+  paper_a_title: string;
+  paper_b_id: string;
+  paper_b_title: string;
+  dataset?: string;
+  metric?: string;
+  paper_a_value?: number;
+  paper_b_value?: number;
+  confidence_score: number;
+  explanation: string;
+  contradiction_type: string;
+  methodology_analysis?: string;
+}
+
 // ── API FUNCTIONS ─────────────────────────────────────────────────────────
 
 export const api = {
@@ -323,5 +367,25 @@ export const api = {
   system: {
     llmStatus: () => get<LlmStatus>("/system/llm"),
     llmTest: (prompt?: string) => post<LlmTestResult>("/system/llm/test", prompt ? { prompt } : {}),
+  },
+  models: {
+    list: (limit = 30) => get<{ models: ModelRecord[] }>("/models", { limit }),
+    active: () => get<{ active_models: ModelRecord[] }>("/models/active"),
+    metrics: () => get<{ series: ModelMetricSeries }>("/models/metrics"),
+    train: (token: string | null, body: { model_type: string; edge_type: string; epochs: number; hidden_dim: number }) =>
+      fetch(`${BASE}/models/train`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      }),
+  },
+  contradictions: {
+    list: (params: { domain?: string; contradiction_type?: string; min_confidence?: number; limit?: number }) =>
+      get<{ contradictions: Contradiction[] }>("/contradictions", params as Record<string, string | number | boolean>),
+    scan: (domain?: string) =>
+      fetch(`${BASE}/contradictions/scan${domain ? `?domain=${encodeURIComponent(domain)}` : ""}`, { method: "POST" }),
   },
 };

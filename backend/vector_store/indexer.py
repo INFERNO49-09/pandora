@@ -29,94 +29,105 @@ async def index_paper_extraction(
     Embedding failures are intentionally handled by callers so graph ingestion
     can still succeed if the vector backend or embedding provider is unavailable.
     """
+    return await index_batch_extractions([(paper, extraction)])
+
+
+async def index_batch_extractions(
+    items: list[tuple[RawPaper, ExtractionResult]],
+) -> dict[str, int]:
+    """
+    Embed and upsert papers and extracted entities in collection-level batches.
+    """
     batches: dict[str, list[dict]] = {
         "papers": [],
         "concepts": [],
         "domains": [],
     }
 
-    if paper.title:
-        paper_text = f"Paper: {paper.title}\nAbstract: {(paper.abstract or '')[:1200]}"
-        batches["papers"].append(
-            {
-                "node_id": extraction.paper_id,
-                "text": paper_text,
-                "payload": {
+    seen_points: set[tuple[str, str]] = set()
+    for paper, extraction in items:
+        if paper.title:
+            paper_text = f"Paper: {paper.title}\nAbstract: {(paper.abstract or '')[:1200]}"
+            batches["papers"].append(
+                {
                     "node_id": extraction.paper_id,
-                    "title": paper.title,
-                    "type": "Paper",
-                    "year": paper.year,
-                    "source": paper.source,
-                },
-            }
-        )
+                    "text": paper_text,
+                    "payload": {
+                        "node_id": extraction.paper_id,
+                        "title": paper.title,
+                        "type": "Paper",
+                        "year": paper.year,
+                        "source": paper.source,
+                    },
+                }
+            )
 
-    seen_concepts: set[str] = set()
-    for concept in extraction.concepts:
-        name = concept.canonical_name or concept.name
-        if not name:
-            continue
-        node_id = _concept_id(name)
-        if node_id in seen_concepts:
-            continue
-        seen_concepts.add(node_id)
-        batches["concepts"].append(
-            {
-                "node_id": node_id,
-                "text": f"Scientific concept: {name}",
-                "payload": {
+        for concept in extraction.concepts:
+            name = concept.canonical_name or concept.name
+            if not name:
+                continue
+            node_id = _concept_id(name)
+            key = ("concepts", node_id)
+            if key in seen_points:
+                continue
+            seen_points.add(key)
+            batches["concepts"].append(
+                {
                     "node_id": node_id,
-                    "name": name,
-                    "domain": concept.domain,
-                    "type": "Concept",
-                    "source_paper_id": extraction.paper_id,
-                },
-            }
-        )
+                    "text": f"Scientific concept: {name}",
+                    "payload": {
+                        "node_id": node_id,
+                        "name": name,
+                        "domain": concept.domain,
+                        "type": "Concept",
+                        "source_paper_id": extraction.paper_id,
+                    },
+                }
+            )
 
-    seen_methods: set[str] = set()
-    for method in extraction.methods:
-        name = method.canonical_name or method.name
-        if not name:
-            continue
-        node_id = _method_id(name)
-        if node_id in seen_methods:
-            continue
-        seen_methods.add(node_id)
-        batches["concepts"].append(
-            {
-                "node_id": node_id,
-                "text": f"Scientific method: {name}",
-                "payload": {
+        for method in extraction.methods:
+            name = method.canonical_name or method.name
+            if not name:
+                continue
+            node_id = _method_id(name)
+            key = ("concepts", node_id)
+            if key in seen_points:
+                continue
+            seen_points.add(key)
+            batches["concepts"].append(
+                {
                     "node_id": node_id,
-                    "name": name,
-                    "category": method.category,
-                    "type": "Method",
-                    "source_paper_id": extraction.paper_id,
-                },
-            }
-        )
+                    "text": f"Scientific method: {name}",
+                    "payload": {
+                        "node_id": node_id,
+                        "name": name,
+                        "category": method.category,
+                        "type": "Method",
+                        "source_paper_id": extraction.paper_id,
+                    },
+                }
+            )
 
-    seen_domains: set[str] = set()
-    for domain in extraction.domains:
-        if not domain:
-            continue
-        node_id = _domain_id(domain)
-        if node_id in seen_domains:
-            continue
-        seen_domains.add(node_id)
-        batches["domains"].append(
-            {
-                "node_id": node_id,
-                "text": f"Research domain: {domain}",
-                "payload": {
+        for domain in extraction.domains:
+            if not domain:
+                continue
+            node_id = _domain_id(domain)
+            key = ("domains", node_id)
+            if key in seen_points:
+                continue
+            seen_points.add(key)
+            batches["domains"].append(
+                {
                     "node_id": node_id,
-                    "name": domain,
-                    "type": "Domain",
-                    "source_paper_id": extraction.paper_id,
-                },
-            }
-        )
+                    "text": f"Research domain: {domain}",
+                    "payload": {
+                        "node_id": node_id,
+                        "name": domain,
+                        "type": "Domain",
+                        "source_paper_id": extraction.paper_id,
+                    },
+                }
+            )
 
     counts: dict[str, int] = {}
     for collection, items in batches.items():
@@ -136,5 +147,5 @@ async def index_paper_extraction(
         await upsert_vectors(collection, points)
         counts[collection] = len(points)
 
-    logger.debug(f"Indexed vectors for paper {extraction.paper_id}: {counts}")
+    logger.debug(f"Indexed vectors for {len(items)} papers: {counts}")
     return counts

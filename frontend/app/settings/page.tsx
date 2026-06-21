@@ -14,8 +14,7 @@ import {
   Send,
   Zap,
 } from "lucide-react";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { BASE } from "@/lib/api";
 
 interface LlmStatus {
   provider: "nim" | "local";
@@ -287,8 +286,8 @@ export default function SettingsPage() {
               "Install Ollama from https://ollama.com",
               `Run: ollama pull ${status.chat_model}`,
               `Run: ollama pull ${status.embed_model}`,
-              "Ollama serves automatically on localhost:11434 — no extra step needed",
-              "Refresh this page once the models are pulled",
+              "Running the backend in Docker on Linux? Add \"host.docker.internal:host-gateway\" to extra_hosts in docker-compose.yml, and start Ollama with OLLAMA_HOST=0.0.0.0:11434 so it accepts connections from the container.",
+              "Refresh this page once the models are pulled and Ollama is reachable",
             ].map((step, i) => (
               <div key={i} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
                 <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--color-indigo)", flexShrink: 0, width: "16px" }}>{i + 1}.</span>

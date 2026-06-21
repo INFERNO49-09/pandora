@@ -5,6 +5,8 @@
 
 CREATE TABLE IF NOT EXISTS ingestion_sources (
     id TEXT PRIMARY KEY,
+    cursor TEXT,
+    last_sync_timestamp TIMESTAMPTZ,
     last_checkpoint JSONB DEFAULT '{}',
     papers_ingested BIGINT DEFAULT 0,
     last_run_at TIMESTAMPTZ,
@@ -36,6 +38,33 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON ingestion_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON ingestion_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ingestion_sources_sync
+    ON ingestion_sources (id, last_sync_timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS ingestion_paper_fingerprints (
+    paper_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    source_id TEXT,
+    openalex_id TEXT,
+    arxiv_id TEXT,
+    doi TEXT,
+    content_hash TEXT NOT NULL,
+    title TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingestion_fingerprint_openalex_id
+    ON ingestion_paper_fingerprints (openalex_id)
+    WHERE openalex_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingestion_fingerprint_arxiv_id
+    ON ingestion_paper_fingerprints (arxiv_id)
+    WHERE arxiv_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingestion_fingerprint_doi
+    ON ingestion_paper_fingerprints (doi)
+    WHERE doi IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingestion_fingerprint_content_hash
+    ON ingestion_paper_fingerprints (content_hash)
+    WHERE content_hash IS NOT NULL;
 
 -- ── ML MODEL REGISTRY ─────────────────────────────────────────────────────────
 

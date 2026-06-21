@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
-import { api } from "@/lib/api";
+import { api, BASE } from "@/lib/api";
 import { StatCard, SectionHeader, Badge } from "@/components/ui/primitives";
 import { Upload, CheckCircle, Clock, XCircle, Loader, FileText, AlertCircle, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 interface Job {
   job_id: string;
